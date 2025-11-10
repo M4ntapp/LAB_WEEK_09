@@ -24,7 +24,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-// Import baru untuk navigasi
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -35,13 +34,19 @@ import com.example.lab_week_09.ui.theme.LAB_WEEK_09Theme
 import com.example.lab_week_09.ui.theme.OnBackgroundItemText
 import com.example.lab_week_09.ui.theme.OnBackgroundTitleText
 import com.example.lab_week_09.ui.theme.PrimaryTextButton
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             LAB_WEEK_09Theme {
-
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -58,21 +63,17 @@ data class Student(
     var name: String
 )
 
-
 @Composable
 fun App(navController: NavHostController) {
     NavHost(
         navController = navController,
         startDestination = "home"
     ) {
-
         composable("home") {
             Home { listDataString ->
-
                 navController.navigate("resultContent/?listData=$listDataString")
             }
         }
-
         composable(
             "resultContent/?listData={listData}",
             arguments = listOf(navArgument("listData") {
@@ -86,7 +87,6 @@ fun App(navController: NavHostController) {
     }
 }
 
-
 @Composable
 fun Home(navigateFromHomeToResult: (String) -> Unit) {
     val listData = remember { mutableStateListOf(
@@ -96,21 +96,31 @@ fun Home(navigateFromHomeToResult: (String) -> Unit) {
     )}
     var inputField = remember { mutableStateOf(Student("")) }
 
-
     HomeContent(
         listData = listData,
         inputField = inputField.value,
         onInputValueChange = { input -> inputField.value = inputField.value.copy(name = input) },
+
         onButtonClick = {
             if (inputField.value.name.isNotBlank()) {
                 listData.add(inputField.value)
                 inputField.value = Student("")
             }
         },
-        navigateFromHomeToResult = { navigateFromHomeToResult(listData.toList().toString()) }
+
+        navigateFromHomeToResult = {
+            val moshi = Moshi.Builder()
+                .add(KotlinJsonAdapterFactory())
+                .build()
+            val listType = Types.newParameterizedType(List::class.java, Student::class.java)
+            val adapter: JsonAdapter<List<Student>> = moshi.adapter(listType)
+            val jsonString = adapter.toJson(listData.toList())
+
+            val encodedJson = URLEncoder.encode(jsonString, StandardCharsets.UTF_8.toString())
+            navigateFromHomeToResult(encodedJson)
+        }
     )
 }
-
 
 @Composable
 fun HomeContent(
@@ -120,6 +130,7 @@ fun HomeContent(
     onButtonClick: () -> Unit,
     navigateFromHomeToResult: () -> Unit
 ) {
+
     LazyColumn {
         item {
             Column(
@@ -134,14 +145,9 @@ fun HomeContent(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                     onValueChange = { onInputValueChange(it) }
                 )
-
                 Row {
-                    PrimaryTextButton(text = stringResource(id = R.string.button_click)) {
-                        onButtonClick()
-                    }
-                    PrimaryTextButton(text = stringResource(id = R.string.button_navigate)) {
-                        navigateFromHomeToResult()
-                    }
+                    PrimaryTextButton(text = stringResource(id = R.string.button_click)) { onButtonClick() }
+                    PrimaryTextButton(text = stringResource(id = R.string.button_navigate)) { navigateFromHomeToResult() }
                 }
             }
         }
@@ -160,18 +166,37 @@ fun HomeContent(
 
 
 @Composable
-fun ResultContent(listData: String) {
-    Column(
+fun ResultContent(listDataJson: String) {
+
+    val jsonString = if(listDataJson.isNotEmpty()) URLDecoder.decode(listDataJson, StandardCharsets.UTF_8.toString()) else ""
+
+
+    val moshi = Moshi.Builder()
+        .add(KotlinJsonAdapterFactory())
+        .build()
+    val listType = Types.newParameterizedType(List::class.java, Student::class.java)
+    val adapter: JsonAdapter<List<Student>> = moshi.adapter(listType)
+
+
+    val studentList = if (jsonString.isNotEmpty()) adapter.fromJson(jsonString) else emptyList()
+
+
+    LazyColumn(
         modifier = Modifier
-            .padding(vertical = 4.dp)
-            .fillMaxSize(),
+            .fillMaxSize()
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        OnBackgroundItemText(text = listData)
+        item {
+            OnBackgroundTitleText(text = "Final List")
+        }
+        studentList?.let {
+            items(it) { student ->
+                OnBackgroundItemText(text = student.name)
+            }
+        }
     }
 }
-
-
 
 @Preview(showBackground = true)
 @Composable
